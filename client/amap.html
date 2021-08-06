@@ -1,0 +1,89 @@
+
+
+<!doctype html>
+<html>
+<head>
+    <meta charset="utf-8">
+    <meta http-equiv="X-UA-Compatible" content="IE=edge">
+    <meta name="viewport" content="initial-scale=1.0, user-scalable=no, width=device-width">
+    <link rel="stylesheet" href="https://a.amap.com/jsapi_demos/static/demo-center/css/demo-center.css" />
+    <title>地图显示</title>
+    <style>
+        html,
+        body,
+        #container {
+          width: 100%;
+          height: 100%;
+        }
+    </style>
+</head>
+<body>
+<div id="container"></div>
+<!-- 加载地图JSAPI脚本 -->
+<script src="https://webapi.amap.com/loader.js"></script>
+<!-- <script type="text/javascript" src="https://webapi.amap.com/maps?v=2.0&key=0fe4f8ec56db3d50f341eaeeb74675d7"></script> -->
+<script type="text/javascript" src="https://webapi.amap.com/maps?v=1.4.15&key=0fe4f8ec56db3d50f341eaeeb74675d7"></script> 
+<script src="https://webapi.amap.com/ui/1.1/main.js"></script>
+<script type="text/javascript" >
+
+
+
+var map = new AMap.Map('container');   
+var layer = new AMap.TileLayer.Satellite();
+var pathSimplifier;
+var path = []
+var data = [{
+                name: 'FPVTrack',
+                path: path
+            }];
+AMapUI.load(['ui/misc/PathSimplifier', 'lib/$'], function(PathSimplifier, $) {
+
+pathSimplifierIns = new PathSimplifier({
+    zIndex: 100,
+    autoSetFitView: false,
+    map: map, //所属的地图实例
+
+    getPath: function(pathData, pathIndex) {
+
+        return pathData.path;
+    },
+    renderOptions: {
+
+        renderAllPointsIfNumberBelow: -1 //绘制路线节点，如不需要可设置为-1
+    }
+});
+
+
+window.pathSimplifierIns = pathSimplifierIns;
+
+    endIdx = 0,
+
+pathSimplifierIns.setData(data);
+});
+
+
+map.add([layer]);
+var loca_mark = new AMap.Marker({icon:'./img/ustc2.png',offset:{x:-8,y:-16}});
+map.add(loca_mark);
+
+function setLocation(lon,lat) {
+  AMap.convertFrom([lon,lat],'gps',function(info,res){
+    console.log(res);
+    var locations = res["locations"];
+    loca_mark.setPosition(new AMap.LngLat(locations[0].R,locations[0].Q));
+  });
+  // loca_mark.setPosition(new AMap.LngLat(lon,lat));
+}
+
+function setAngle(angle) {
+  loca_mark.setAngle(angle);
+}
+
+function addTrackData(lon,lat){
+  path.push([lon,lat]);
+  data.path = path;
+  pathSimplifierIns.setData(data);
+}
+</script>
+</body>
+</html>
