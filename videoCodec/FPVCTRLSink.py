@@ -4,6 +4,7 @@ from threading import Thread, Lock
 from queue import Queue
 import time
 import traceback
+from helpers.log_statistics import FpvLogStatistic
 
 class CtrlSinkInterface(metaclass=ABCMeta):
     @abstractmethod
@@ -12,7 +13,7 @@ class CtrlSinkInterface(metaclass=ABCMeta):
 
 class MockCtrlSinkInterface(CtrlSinkInterface):
     def sink(self,status_dict:dict):
-        print(status_dict)
+        FpvLogStatistic.on_ctrl_packet_parsed(status_dict)
 
 class CtrlSink():
     def __init__(self,serializableData:SerializableData,

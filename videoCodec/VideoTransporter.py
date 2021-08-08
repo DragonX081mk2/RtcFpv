@@ -7,6 +7,7 @@ import time
 import videoCodec.NaiveVideoTransmissionProtocol as trans_protocol
 from videoCodec import configs
 import traceback
+from helpers.log_statistics import FpvLogStatistic
 
 CONNECTION_MODE_CONTROLLER = 0
 CONNECTION_MODE_FPV = 1
@@ -99,9 +100,8 @@ class VideoConnection(Connection):
             try:
                 packet = self._send_packet_buffer.get_nowait()
             except:
-                time.sleep(0.001)
+                # time.sleep(0.001)
                 continue
-
             try:
                 if packet.get_type() == Packet.TYPE_CTRL:
                     packet = trans_protocol.gen_ctrl_data_channel_pack(packet.data(),False)
@@ -110,27 +110,33 @@ class VideoConnection(Connection):
             except:
                 print(traceback.print_exc())
                 continue
-
             self._udpSocket.sendto(packet, (configs.SERVER_IP, configs.SERVER_VIDEO_PORT))
 
     def videoConnectionFPVSendWorker(self)->None:
         while self._running:
+            time0 = time.time()*1000
             try:
                 packet = self._send_packet_buffer.get_nowait()
             except:
-                time.sleep(0.001)
+                time.sleep(0.0001)
                 continue
+            time1 = time.time()*1000
 
             try:
                 if packet.get_type() == Packet.TYPE_CTRL:
                     packet = trans_protocol.gen_ctrl_data_channel_pack(packet.data())
+                    FpvLogStatistic.on_send_st_packet(len(packet),self._send_packet_buffer.qsize())
                 elif packet.get_type() == Packet.TYPE_VIDEO:
                     packet = trans_protocol.gen_video_data_pack(packet.data())
+                    FpvLogStatistic.on_send_vi_packet(len(packet),self._send_packet_buffer.qsize())
             except:
                 print(traceback.print_exc())
                 continue
+            time2 = time.time()*1000
 
             self._udpSocket.sendto(packet,(configs.SERVER_IP,configs.SERVER_VIDEO_PORT))
+            time3 = time.time()*1000
+            print("Send_ms: tot/pop/encl/send/len: %s/%s/%s/%s/%s"%(time3-time0,time1-time0,time2-time1,time3-time2,len(packet)))
 
     def videoConnectionFPVReceiveWorker(self) -> None:
         while self._running:
@@ -141,9 +147,9 @@ class VideoConnection(Connection):
             # print("receiver worker get data")
             # print("packet len: ",len(packet))
             if trans_protocol.is_ctrl_pack(packet):
-                print("get ctrl pack")
+                FpvLogStatistic.on_recv_ctrl_packet()
                 if trans_protocol.is_data_channel_pack(packet):
-                    print("get dc pack")
+                    FpvLogStatistic.on_recv_dc_packet(1)
                     packet = trans_protocol.parse_packet(packet)
                     self._recv_ctrl_packet_buffer.put(CTRLPacket(packet))
             else:

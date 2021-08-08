@@ -476,7 +476,7 @@ class DRXH264ProtocolHandler(VideoProtocolHandler):
             if stack_packet_number <= 0:
                 _new_fec_ts = self.gen_ets()
                 self.prev_fec_timestamp = _new_fec_ts if _new_fec_ts > self.prev_fec_timestamp else self.prev_fec_timestamp+1
-                print("prev_fec_send_ts_update:%s"%self.prev_fec_timestamp)
+                # print("prev_fec_send_ts_update:%s"%self.prev_fec_timestamp)
             if stack_packet_number + rest_packets_num >= fec_level:
                 pop_packets_num = fec_level - stack_packet_number
                 _pop_packets = rest_packets[:pop_packets_num]

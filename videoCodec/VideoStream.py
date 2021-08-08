@@ -132,7 +132,7 @@ class Camera():
 
     def open(self)->bool:
         if not self.container:
-            options = {"framerate": "5", "video_size": "640x480", "b": "900000"}
+            options = {"framerate": "15", "video_size": "640x480", "b": "900000"}
             try:
                 self.container = av.open("video=USB Camera", format="dshow", options=options)
                 return True
