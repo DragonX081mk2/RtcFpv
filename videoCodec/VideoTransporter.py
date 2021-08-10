@@ -8,6 +8,8 @@ import videoCodec.NaiveVideoTransmissionProtocol as trans_protocol
 from videoCodec import configs
 import traceback
 from helpers.log_statistics import FpvLogStatistic
+from multiprocessing import Array,Process
+from multiprocessing import Queue as MpQueue
 
 CONNECTION_MODE_CONTROLLER = 0
 CONNECTION_MODE_FPV = 1
@@ -325,6 +327,13 @@ class VideoTransporter():
         self._udp_socket.settimeout(0.01)
 
 
+class UdpSender(Process):
+    def __init__(self,socket,mt_queue:Queue):
+        super(UdpSender,self).__init__()
+        self.mt_send_queue = mt_queue
+        self.mp_queue = MpQueue()
+        self.log_msg_arr = None
+        # TODO (bug: send too slow in windows) finish this and use quick multiprocess queue
 
 
 

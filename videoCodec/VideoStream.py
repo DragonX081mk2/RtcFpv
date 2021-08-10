@@ -12,6 +12,7 @@ from videoCodec.VideoTransporter import VideoPacket
 from videoCodec.VideoTransporter import VideoTransporter
 import random
 import traceback
+from videoCodec import configs
 
 '''
 Stream : srouce -> sink
@@ -55,7 +56,7 @@ class LocalVideoStream(Stream):
             if self.cam:
                 frame = self.cam.get_next_frame()
                 if not frame:
-                    time.sleep(0.0001)
+                    time.sleep(0.001)
                     continue
                 packets, ets = self._encoder.encode(frame)
                 enclosure_packets = self._protocol_handler.enclosure_packets(packets,fec_level=8)
@@ -127,14 +128,17 @@ class RemoteVideoStream(Stream):
 
 class Camera():
     def __init__(self):
-        self.device_name = 'USB Camera'
+        self.device_name = configs.CAM_DEVICE_NAME
+        self.cap_video_size = 'x'.join([configs.CAM_CAP_WIDTH,configs.CAM_CAP_HEIGHT])
         self.container = None
+        self.fps = configs.CAM_OUTPUT_FPS
+        self.prev_output_ts = 0
 
     def open(self)->bool:
         if not self.container:
-            options = {"framerate": "15", "video_size": "640x480", "b": "900000"}
+            options = {"framerate": str(configs.CAM_CAP_FPS), "video_size": self.cap_video_size}
             try:
-                self.container = av.open("video=USB Camera", format="dshow", options=options)
+                self.container = av.open("video=%s"%self.device_name, format=configs.CAM_FORMAT, options=options)
                 return True
             except Exception:
                 print(traceback.print_exc())
@@ -142,8 +146,15 @@ class Camera():
                 return False
         return False
     def get_next_frame(self)->Frame:
+        self.fps = configs.CAM_OUTPUT_FPS
         if self.container is not None:
-            return next(self.container.decode())
+            frame = next(self.container.decode())
+            ts = time.time()*1000
+            if ts - self.prev_output_ts > 1000/(self.fps+1):
+                self.prev_output_ts = ts
+                return frame
+            else:
+                return None
         else:
             return None
 
