@@ -13,6 +13,8 @@ from videoCodec.VideoTransporter import VideoTransporter
 import random
 import traceback
 from videoCodec import configs
+import cv2
+import fractions
 
 '''
 Stream : srouce -> sink
@@ -56,14 +58,14 @@ class LocalVideoStream(Stream):
             if self.cam:
                 frame = self.cam.get_next_frame()
                 if not frame:
-                    time.sleep(0.001)
+                    time.sleep(0.06)
                     continue
                 packets, ets = self._encoder.encode(frame)
                 enclosure_packets = self._protocol_handler.enclosure_packets(packets,fec_level=8)
 
                 for packet in enclosure_packets:
                     self.transporter.send(VideoPacket(packet))
-
+            time.sleep(0.06)
 
     def open_camera(self):
         if not self.cam:
@@ -99,7 +101,7 @@ class RemoteVideoStream(Stream):
             try:
                 packet = self._packet_buffer.get_nowait()
             except Exception:
-                time.sleep(0.0001)
+                time.sleep(0.001)
                 continue
             # print("get packet")
             parsed_packets = self._protocol.handle_recved_packet(packet.data())
@@ -129,26 +131,37 @@ class RemoteVideoStream(Stream):
 class Camera():
     def __init__(self):
         self.device_name = configs.CAM_DEVICE_NAME
-        self.cap_video_size = 'x'.join([configs.CAM_CAP_WIDTH,configs.CAM_CAP_HEIGHT])
+        self.cap_video_size = '%sx%s'%(configs.CAM_CAP_WIDTH,configs.CAM_CAP_HEIGHT)
         self.container = None
         self.fps = configs.CAM_OUTPUT_FPS
         self.prev_output_ts = 0
+        self.cap = None
+        self.prev_ts = time.time()
+        self.prev_pts = 0
 
     def open(self)->bool:
-        if not self.container:
-            options = {"framerate": str(configs.CAM_CAP_FPS), "video_size": self.cap_video_size}
-            try:
-                self.container = av.open("video=%s"%self.device_name, format=configs.CAM_FORMAT, options=options)
-                return True
-            except Exception:
-                print(traceback.print_exc())
-                print(Exception)
-                return False
-        return False
+        # if not self.container:
+        #     options = {"framerate": str(configs.CAM_CAP_FPS), "video_size": self.cap_video_size,"b":'900000'}
+        #     try:
+        #         self.container = av.open("video=%s"%self.device_name, format=configs.CAM_FORMAT, options=options)
+        #         return True
+        #     except Exception:
+        #         print(traceback.print_exc())
+        #         print(Exception)
+        #         return False
+        # return False
+        self.cap = cv2.VideoCapture(0)
     def get_next_frame(self)->Frame:
         self.fps = configs.CAM_OUTPUT_FPS
-        if self.container is not None:
-            frame = next(self.container.decode())
+        if self.cap is not None:
+            # frame = next(self.container.decode())
+            _,cv_frame = self.cap.read()
+            crt_time = time.time()
+            frame = av.VideoFrame.from_ndarray(cv_frame,'bgr24')
+            frame.pts = (crt_time-self.prev_ts) * 10000000 + self.prev_ts
+            frame.time_base = fractions.Fraction(1,10000000)
+            self.prev_ts = crt_time
+            self.prev_pts = frame.pts
             ts = time.time()*1000
             if ts - self.prev_output_ts > 1000/(self.fps+1):
                 self.prev_output_ts = ts

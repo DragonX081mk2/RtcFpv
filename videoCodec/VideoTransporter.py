@@ -8,7 +8,7 @@ import videoCodec.NaiveVideoTransmissionProtocol as trans_protocol
 from videoCodec import configs
 import traceback
 from helpers.log_statistics import FpvLogStatistic
-from multiprocessing import Array,Process
+from multiprocessing import Array,Process,Value
 from multiprocessing import Queue as MpQueue
 
 CONNECTION_MODE_CONTROLLER = 0
@@ -36,6 +36,90 @@ class CTRLPacket(Packet):
     def get_type(self):
         return self._type
 
+
+def mp_sender_target(mp_running: Value, mp_queue: MpQueue, socket_queue: MpQueue, sent_count: Value,
+                     socket_changed: Value):
+    socket = None
+    while mp_running.value != 0:
+        if socket_changed.value != 0:
+            socket = socket_queue.get()
+            socket_changed.value = 0
+        try:
+            packets = mp_queue.get_nowait()
+        except:
+            continue
+        # print("mp_packets_len: ",len(packets))
+        for packet in packets:
+            if socket is not None:
+                socket.sendto(packet, (configs.SERVER_IP, configs.SERVER_VIDEO_PORT))
+            sent_count.value += 1
+
+
+class MpUdpSender():
+    def __init__(self):
+        super(MpUdpSender, self).__init__()
+        self.mt_send_queue = Queue()
+        self.mp_queue = MpQueue()
+        self.log_msg_arr = None
+        self.socket_queue = MpQueue()
+        self.socket_changed = Value('i', 0)
+        self.mp_running = Value('i', 1)
+        self.sent_count = Value('i', 1)
+        self.thread_running = True
+        self.min_sender_time_ms = 15
+        self.max_sender_time_ms = 30
+        self.mp_worker = Process(target=mp_sender_target, args=(
+        self.mp_running, self.mp_queue, self.socket_queue, self.sent_count, self.socket_changed))
+        self.mt_sender_worker = Thread(target=self.sender_thread_target, args=[])
+
+    def start(self):
+        self.mp_worker.start()
+        self.mt_sender_worker.start()
+
+    def stop(self):
+        self.mp_running.value = 0
+        self.thread_running = False
+
+    def reset_socket(self, socket: socket.socket):
+        self.socket_queue.put(socket)
+        self.socket_changed.value = 1
+
+    def sender_thread_target(self):
+        prev_time = time.time() * 1000
+        packets = []
+        while self.thread_running:
+            try:
+                packet = self.mt_send_queue.get_nowait()
+            except:
+                crt_time = time.time() * 1000
+                if crt_time - prev_time < self.min_sender_time_ms:
+                    continue
+                else:
+                    prev_time = crt_time
+                    if len(packets) > 0:
+                        self.mp_queue.put(packets)
+                        # print('mp_queue_size: ',self.mp_queue.qsize())
+                    packets = []
+                    continue
+
+            crt_time = time.time() * 1000
+            packets.append(packet)
+            if crt_time - prev_time >= self.max_sender_time_ms:
+                if len(packets) > 0:
+                    self.mp_queue.put(packets)
+                prev_time = crt_time
+                packets = []
+
+    def send(self, packet):
+        self.mt_send_queue.put(packet)
+        # print('mt_queue_len: %s'%self.mt_send_queue.qsize())
+
+    def count_sent(self):
+        sent_count = self.sent_count.value
+        self.sent_count.value = 0
+        return sent_count
+
+
 '''
 VideoConnection:
 send/recv video packet / ctrl packet
@@ -45,7 +129,8 @@ class VideoConnection(Connection):
     def __init__(self,udp_socket:socket.socket = None,
                  recv_video_packet_buffer:Queue = Queue(),
                  recv_ctrl_packet_buffer:Queue = Queue(),
-                 mode:str=CONNECTION_MODE_CONTROLLER):
+                 mode:str=CONNECTION_MODE_CONTROLLER,
+                 mp_sender:MpUdpSender=None):
         self._udpSocket = udp_socket
         self._recv_ctrl_packet_buffer = recv_ctrl_packet_buffer
         self._recv_video_buffer = recv_video_packet_buffer
@@ -53,11 +138,14 @@ class VideoConnection(Connection):
         self._running = True
         assert mode in [CONNECTION_MODE_CONTROLLER,CONNECTION_MODE_FPV],"Mode:{} not available".format(mode)
         self.mode = mode
+        self.mp_sender = mp_sender
 
     def start(self) -> None:
         recv_target = self.videoConnectionClientReceiveWorker
         send_target = self.videoConnectionClientSendWorker
         if self.mode == CONNECTION_MODE_FPV:
+            if self.mp_sender is not None:
+                self.mp_sender.reset_socket(self._udpSocket)
             send_target = self.videoConnectionFPVSendWorker
             recv_target = self.videoConnectionFPVReceiveWorker
         self._thread_recv_conn = Thread(target=recv_target,
@@ -120,7 +208,7 @@ class VideoConnection(Connection):
             try:
                 packet = self._send_packet_buffer.get_nowait()
             except:
-                time.sleep(0.0001)
+                # time.sleep(0.0001)
                 continue
             time1 = time.time()*1000
 
@@ -136,9 +224,10 @@ class VideoConnection(Connection):
                 continue
             time2 = time.time()*1000
 
-            self._udpSocket.sendto(packet,(configs.SERVER_IP,configs.SERVER_VIDEO_PORT))
+            # self._udpSocket.sendto(packet,(configs.SERVER_IP,configs.SERVER_VIDEO_PORT))
+            self.mp_sender.send(packet)
             time3 = time.time()*1000
-            print("Send_ms: tot/pop/encl/send/len: %s/%s/%s/%s/%s"%(time3-time0,time1-time0,time2-time1,time3-time2,len(packet)))
+            # print("Send_ms: tot/pop/encl/send/len: %s/%s/%s/%s/%s"%(time3-time0,time1-time0,time2-time1,time3-time2,len(packet)))
 
     def videoConnectionFPVReceiveWorker(self) -> None:
         while self._running:
@@ -228,12 +317,14 @@ class VideoTransporter():
     _instance_lock = Lock()
     def __init__(self,recv_video_packet_buffer:Queue=Queue(),
                  recv_ctrl_packet_buffer:Queue=Queue(),
-                 mode:str=CONNECTION_MODE_CONTROLLER):
+                 mode:str=CONNECTION_MODE_CONTROLLER,
+                 mp_sender:MpUdpSender = None):
         self._recv_video_packet_buffer = recv_video_packet_buffer
         self._recv_ctrl_packet_buffer = recv_ctrl_packet_buffer
         self.video_connection = None
         self._status = self.Status(self)
         self.mode = mode
+        self.mp_sender = mp_sender
 
 
     @classmethod
@@ -257,7 +348,8 @@ class VideoTransporter():
             raise TimeoutError
         self.video_connection = VideoConnection(self._udp_socket,
                                                 recv_video_packet_buffer=self._recv_video_packet_buffer,
-                                                recv_ctrl_packet_buffer=self._recv_ctrl_packet_buffer,mode=self.mode)
+                                                recv_ctrl_packet_buffer=self._recv_ctrl_packet_buffer,mode=self.mode,
+                                                mp_sender=self.mp_sender)
         self.video_connection.start()
         return self.video_connection
 
@@ -325,15 +417,6 @@ class VideoTransporter():
                     raise  TimeoutError
 
         self._udp_socket.settimeout(0.01)
-
-
-class UdpSender(Process):
-    def __init__(self,socket,mt_queue:Queue):
-        super(UdpSender,self).__init__()
-        self.mt_send_queue = mt_queue
-        self.mp_queue = MpQueue()
-        self.log_msg_arr = None
-        # TODO (bug: send too slow in windows) finish this and use quick multiprocess queue
 
 
 

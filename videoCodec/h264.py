@@ -264,7 +264,7 @@ class H264Encoder(Encoder):
             self.codec.time_base = fractions.Fraction(1, MAX_FRAME_RATE)
             self.codec.options = {
                 "profile": "baseline",
-                "level": "51",
+                "level": "31",
                 "tune": "zerolatency",
                 # "preset":"ultrafast",
             }

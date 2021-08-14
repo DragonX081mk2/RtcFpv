@@ -1,6 +1,6 @@
 from queue import Queue
 from threading import Thread,Lock
-from videoCodec.VideoTransporter import VideoTransporter,VideoConnection,CONNECTION_MODE_FPV,CONNECTION_MODE_CONTROLLER
+from videoCodec.VideoTransporter import VideoTransporter,VideoConnection,CONNECTION_MODE_FPV,CONNECTION_MODE_CONTROLLER,MpUdpSender
 from videoCodec.VideoSink import VideoRender
 from videoCodec.VideoStream import LocalVideoStream,RemoteVideoStream
 from videoCodec.FPVCTRLSink import CtrlSink,CtrlSinkInterface
@@ -42,11 +42,14 @@ class VideoManager():
         return cls._instance
 
     def init_all_resources(self,render:VideoRender,ctrl_sink_interface:CtrlSinkInterface):
+        self.mp_sender = None
+        if self.mode == CONNECTION_MODE_FPV:
+            self.mp_sender = MpUdpSender()
+            self.mp_sender.start()
         self.init_transporter()
         self.init_stream()
         self.init_ctrl_sink()
         self.set_render(render)
-
         self.set_ctrl_sink_interface(ctrl_sink_interface)
 
 
@@ -54,7 +57,7 @@ class VideoManager():
         try:
             self.video_transporter = VideoTransporter.instance(self.recv_video_packet_buffer,
                                                                self.recv_ctrl_packet_buffer,
-                                                               self.mode)
+                                                               self.mode,self.mp_sender)
             self.video_transporter.start()
             return True
         except:
