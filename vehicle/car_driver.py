@@ -94,14 +94,17 @@ def turn_left(delaytime =1,speed_ratio = 0.3):
 class CarCTRLSinkInterface(CtrlSinkInterface):
     def __init__(self):
         super(CarCTRLSinkInterface, self).__init__()
-        self.servo = Servo(Adafruit_PCA9685=p)
+        self.servo_yaw = Servo(Adafruit_PCA9685=p)
+        self.servo_pitch = Servo(Adafruit_PCA9685=p,channel=5)
 
     def sink(self,status_dict:dict):
         print("ctrl sink {}".format(status_dict))
         motion = status_dict[FPVSerializeControlData.KEY_MOTION]
         servo_yaw_degree = status_dict[FPVSerializeControlData.KEY_YAW]
+        servo_pitch_degree = status_dict[FPVSerializeControlData.KEY_PITCH]
         speed = status_dict[FPVSerializeControlData.KEY_SPEED]
-        self.servo.change_angle_to(angle=servo_yaw_degree)
+        self.servo_yaw.change_angle_to(angle=servo_yaw_degree)
+        self.servo_pitch.change_angle_to(angle=servo_pitch_degree)
         if motion == FPVSerializeControlData.VALUE_FORWARD:
             forward(speed_ratio=speed)
             return

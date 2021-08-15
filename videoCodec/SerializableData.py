@@ -19,6 +19,7 @@ class FPVSerializeControlData(SerializableData):
 
     #servo motion
     KEY_YAW = 'yaw'
+    KEY_PITCH = 'pitch'
 
     # motor motion
     KEY_MOTION = 'motion'
@@ -37,6 +38,7 @@ class FPVSerializeControlData(SerializableData):
     """
     FPV CTRL DATA STRUCTURE
     1 byte yaw 0-180 degrees
+    1 byte pitch 0-180 degrees
     1 byte motion (in big order)
     1 byte speed (0-1 acc 0.1 in big order
     """
@@ -45,18 +47,21 @@ class FPVSerializeControlData(SerializableData):
     @classmethod
     def serialize(cls,data:dict) ->bytes:
         yaw = data[cls.KEY_YAW]
+        pitch = data[cls.KEY_PITCH]
         motion = data[cls.KEY_MOTION]
         speed = data[cls.KEY_SPEED]
-        return int.to_bytes(yaw,1,cls.ORDER) + int.to_bytes(motion,1,cls.ORDER)+int.to_bytes(int(speed*1e1),1,cls.ORDER)
+        return int.to_bytes(yaw,1,cls.ORDER) + int.to_bytes(pitch,1,cls.ORDER) + int.to_bytes(motion,1,cls.ORDER)+int.to_bytes(int(speed*1e1),1,cls.ORDER)
 
     @classmethod
     def deserialize(cls,serialized_data:bytes) ->dict:
         data_dict = dict()
         yaw_bytes = serialized_data[0:1]
-        motion_bytes = serialized_data[1:2]
-        spd_bytes = serialized_data[2:3]
+        pitch_bytes = serialized_data[1:2]
+        motion_bytes = serialized_data[2:3]
+        spd_bytes = serialized_data[3:4]
 
         data_dict[cls.KEY_YAW] = int.from_bytes(yaw_bytes,cls.ORDER)
+        data_dict[cls.KEY_PITCH] = int.from_bytes(pitch_bytes,cls.ORDER)
         data_dict[cls.KEY_MOTION] = int.from_bytes(motion_bytes,cls.ORDER)
         data_dict[cls.KEY_SPEED] = int.from_bytes(spd_bytes,cls.ORDER) / 10
         return data_dict
