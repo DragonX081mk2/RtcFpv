@@ -150,7 +150,7 @@ class Camera():
         #         print(Exception)
         #         return False
         # return False
-        self.cap = cv2.VideoCapture(0)
+        self.cap = cv2.VideoCapture(5)
     def get_next_frame(self)->Frame:
         self.fps = configs.CAM_OUTPUT_FPS
         if self.cap is not None:
